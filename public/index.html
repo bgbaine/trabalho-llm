@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Projeto LLM com OpenRouter</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 850px;
+        margin: 32px auto;
+      }
+      textarea {
+        width: 100%;
+        height: 140px;
+        font-size: 16px;
+      }
+      button {
+        padding: 10px 18px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      pre {
+        white-space: pre-wrap;
+        background: #f1f5f9;
+        padding: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Assistente com LLM</h1>
+    <p>Digite uma pergunta ou tarefa para enviar ao modelo via API local.</p>
+    <textarea
+      id="prompt"
+      placeholder="Ex.: Crie 3 perguntas sobre APIs REST."
+    ></textarea>
+    <br /><br />
+    <button onclick="enviar()">Enviar</button>
+    <h2>Resposta</h2>
+    <pre id="resposta">A resposta aparecera aqui.</pre>
+    <script>
+      async function enviar() {
+        const prompt = document.getElementById("prompt").value;
+        const output = document.getElementById("resposta");
+        output.textContent = "Consultando a IA...";
+        try {
+          const response = await fetch("/api/llm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            output.textContent = data.erro || "Erro desconhecido.";
+            return;
+          }
+          output.textContent = data.resposta;
+        } catch (error) {
+          output.textContent = "Erro ao conectar com a API local.";
+        }
+      }
+    </script>
+  </body>
+</html>
