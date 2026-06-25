@@ -1,51 +1,71 @@
-# TAF Coach — Assistente para preparação em Testes de Aptidão Física
+# Planejador TAF
 
-## Visão Geral do Projeto
+Aplicação web para apoiar candidatos na preparação para TAF (Teste de Aptidão Física) a partir do edital em PDF.
 
-O TAF Coach é uma Prova de Conceito (PoC) que demonstra a aplicação de modelos de linguagem na orientação inicial de candidatos que precisam se preparar para Testes de Aptidão Física (TAF) de concursos públicos, forças armadas e instituições de segurança.
+O sistema é orientado por documento: o usuário envia o edital em PDF e a aplicação executa um fluxo automático para extrair texto e gerar um plano de treino com IA.
 
-A proposta do sistema é transformar informações presentes em editais em um plano de preparação simples e objetivo, auxiliando o usuário a compreender as exigências físicas e organizar seus estudos e treinamentos de forma estruturada.
+Fluxo principal:
 
-### Principais Funcionalidades
+1. Upload do edital em PDF (até 10 MB).
+2. Extração de texto relevante para TAF.
+3. Envio do conteúdo para o modelo via OpenRouter.
+4. Exibição de plano estruturado na interface.
 
-**Interpretação do Edital**
+## Funcionalidades
 
-O sistema recebe o trecho do edital relacionado ao TAF e identifica automaticamente os exercícios exigidos, índices mínimos, critérios de aprovação e prazos disponíveis para preparação.
+- Upload de arquivo PDF diretamente na interface.
+- Extração de texto com filtro para termos de TAF.
+- Geração de plano com saída em JSON estruturado.
+- Renderização visual do plano com seções:
+	- Resumo
+	- Informações identificadas
+	- Informações faltantes
+	- Avaliação
+	- Cronograma
+	- Recomendações
+	- Alimentação
+	- Cuidados
 
-**Geração de Cronograma**
+## Arquitetura resumida
 
-Com base no período informado pelo usuário até a realização do teste, o assistente produz uma sugestão de cronograma semanal de treinamento, distribuindo os exercícios ao longo dos dias disponíveis.
+- Backend: Node.js + Express
+- Frontend: HTML/CSS/JavaScript (estático em `public/`)
+- Upload de arquivos: Multer (memória)
+- Extração de PDF: `pdf-parse`
+- IA: OpenRouter Chat Completions
 
-**Orientação de Treino**
+## Endpoints
 
-Além do cronograma, o sistema apresenta sugestões básicas de treinamento relacionadas às provas exigidas, como corrida, flexão de braço, abdominal e barra fixa, sempre alinhadas às informações presentes no edital.
+- `GET /api/status`: valida se a API está ativa.
+- `POST /api/extract-pdf`: recebe arquivo `pdf` e retorna texto extraído.
+- `POST /api/llm`: recebe `prompt` e retorna a resposta do modelo.
 
----
+## Requisitos
 
-## Controle de Confiabilidade das Respostas
+- Node.js 18+ (recomendado)
+- Chave da OpenRouter
 
-Para reduzir interpretações incorretas, o modelo recebe instruções para utilizar prioritariamente os dados fornecidos pelo usuário no edital. As recomendações geradas devem considerar apenas os requisitos identificados no documento e as informações complementares fornecidas pelo candidato.
+## Configuração
 
-O sistema não realiza diagnósticos médicos nem substitui acompanhamento profissional de educação física, atuando exclusivamente como ferramenta de apoio ao planejamento inicial.
+Crie um arquivo `.env` na raiz:
 
----
+```env
+OPENROUTER_API_KEY=sua_chave_aqui
+```
 
-## Etapas de Funcionamento
+## Como executar
 
-1. O usuário envia o edital completo ou o trecho referente ao TAF e informa o tempo disponível até a data do teste.
+```bash
+npm install
+npm run dev
+```
 
-2. O sistema identifica os exercícios cobrados e os critérios de aprovação.
+Aplicação disponível em `http://localhost:3000`.
 
-3. As exigências são organizadas em uma estrutura padronizada.
+## Como usar
 
-4. O assistente gera um cronograma simplificado de preparação.
-
-5. O sistema apresenta recomendações de treino compatíveis com os requisitos identificados.
-
-6. O usuário recebe um resumo das exigências do TAF e um plano inicial de preparação.
-
----
-
-## Resultado Esperado
-
-Ao final do processo, o candidato obtém uma interpretação clara das exigências físicas do edital, acompanhada de um cronograma básico de treinamento que facilite sua organização e preparação para o Teste de Aptidão Física.
+1. Abra a aplicação no navegador.
+2. Selecione um edital em PDF.
+3. Clique em **Processar Edital**.
+4. Aguarde a extração e a geração do plano.
+5. Analise o resultado renderizado na tela.
