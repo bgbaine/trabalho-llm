@@ -1,63 +1,684 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
+<head>
     <meta charset="UTF-8" />
-    <title>Projeto LLM com OpenRouter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Planejador TAF - Preparação Física</title>
     <style>
-      body {
-        font-family: Arial, sans-serif;
-        max-width: 850px;
-        margin: 32px auto;
-      }
-      textarea {
-        width: 100%;
-        height: 140px;
-        font-size: 16px;
-      }
-      button {
-        padding: 10px 18px;
-        font-size: 16px;
-        cursor: pointer;
-      }
-      pre {
-        white-space: pre-wrap;
-        background: #f1f5f9;
-        padding: 16px;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>Assistente com LLM</h1>
-    <p>Digite uma pergunta ou tarefa para enviar ao modelo via API local.</p>
-    <textarea
-      id="prompt"
-      placeholder="Ex.: Crie 3 perguntas sobre APIs REST."
-    ></textarea>
-    <br /><br />
-    <button onclick="enviar()">Enviar</button>
-    <h2>Resposta</h2>
-    <pre id="resposta">A resposta aparecera aqui.</pre>
-    <script>
-      async function enviar() {
-        const prompt = document.getElementById("prompt").value;
-        const output = document.getElementById("resposta");
-        output.textContent = "Consultando a IA...";
-        try {
-          const response = await fetch("/api/llm", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt }),
-          });
-          const data = await response.json();
-          if (!response.ok) {
-            output.textContent = data.erro || "Erro desconhecido.";
-            return;
-          }
-          output.textContent = data.resposta;
-        } catch (error) {
-          output.textContent = "Erro ao conectar com a API local.";
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-      }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #2c3e50;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: slideDown 0.6s ease-out;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            color: #1a5f3d;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .header p {
+            color: #555;
+            font-size: 1.1em;
+        }
+
+        .input-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .input-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #1a5f3d;
+            font-size: 0.95em;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 15px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #1a5f3d;
+            box-shadow: 0 0 0 3px rgba(26, 95, 61, 0.1);
+        }
+
+        .button-group {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 14px 20px;
+            font-size: 1em;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-send {
+            background: linear-gradient(135deg, #1a5f3d 0%, #2d8659 100%);
+            color: white;
+        }
+
+        .btn-send:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(26, 95, 61, 0.3);
+        }
+
+        .btn-send:active {
+            transform: translateY(0);
+        }
+
+        .btn-send.loading {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .response-section {
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert-error {
+            background: #fee;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+
+        .alert-success {
+            background: #efe;
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+
+        /* Cards e Seções */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+            border-left: 5px solid #1a5f3d;
+        }
+
+        .card h2 {
+            color: #1a5f3d;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-icon {
+            font-size: 1.3em;
+        }
+
+        .resumo-text {
+            line-height: 1.8;
+            color: #444;
+            font-size: 1.05em;
+        }
+
+        /* Informações Identificadas */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .info-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+        }
+
+        .info-label {
+            font-weight: 700;
+            color: #1a5f3d;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            color: #555;
+            margin-top: 8px;
+            font-size: 1.1em;
+        }
+
+        .info-empty {
+            color: #999;
+            font-style: italic;
+        }
+
+        /* Modalidades */
+        .modalidades-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #1a5f3d;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .badge-missing {
+            background: #ff9800;
+        }
+
+        /* Cronograma */
+        .schedule-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .schedule-day {
+            background: linear-gradient(135deg, #f5f7fa 0%, #eff0f3 100%);
+            border: 2px solid #1a5f3d;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .schedule-day-title {
+            font-weight: 700;
+            color: #1a5f3d;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .schedule-objetivo {
+            font-size: 0.95em;
+            color: #555;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .activities {
+            list-style: none;
+        }
+
+        .activities li {
+            padding: 6px 0;
+            padding-left: 22px;
+            position: relative;
+            color: #666;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        .activities li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #2d8659;
+            font-weight: bold;
+        }
+
+        /* Recomendações */
+        .recommendations-list {
+            list-style: none;
+            margin-top: 15px;
+        }
+
+        .recommendations-list li {
+            padding: 12px 0;
+            padding-left: 30px;
+            position: relative;
+            border-bottom: 1px solid #eee;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .recommendations-list li:last-child {
+            border-bottom: none;
+        }
+
+        .recommendations-list li:before {
+            content: "→";
+            position: absolute;
+            left: 5px;
+            color: #1a5f3d;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        /* Alimentação */
+        .food-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .food-item {
+            background: #f0f8f4;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #2d8659;
+        }
+
+        .food-title {
+            font-weight: 700;
+            color: #1a5f3d;
+        }
+
+        .food-desc {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        /* Cuidados */
+        .care-item {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            color: #856404;
+        }
+
+        .care-item strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        /* Estados vazios */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .schedule-container {
+                grid-template-columns: 1fr;
+            }
+
+            .food-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Planejador TAF</h1>
+        </div>
+
+        <div class="input-section">
+            <label class="input-label">Anexe o edital em PDF para gerar seu plano de treino:</label>
+            <div style="position: relative; margin-bottom: 15px;">
+                <input 
+                    type="file" 
+                    id="pdfFile" 
+                    accept=".pdf" 
+                    style="
+                        width: 100%;
+                        padding: 12px 15px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-size: 16px;
+                    "
+                />
+                <small style="display: block; margin-top: 8px; color: #666;">
+                    Máximo: 10MB • Formato: PDF
+                </small>
+            </div>
+            
+            <div id="fileInfo" style="display: none; margin-bottom: 15px; padding: 12px; background: #f0f8f4; border-radius: 8px; border-left: 4px solid #2d8659;">
+                <strong style="color: #1a5f3d;">Arquivo selecionado:</strong>
+                <p id="fileName" style="margin: 5px 0; color: #555;"></p>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-send" id="btnProcessar" onclick="processarPDF()" style="flex: 1;">
+                    <span id="btn-text">📤 Processar Edital</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="alerts"></div>
+        <div id="response-container" class="response-section"></div>
+    </div>
+
+    <script>
+        // Mostrar info do arquivo quando selecionado
+        document.getElementById('pdfFile').addEventListener('change', function(e) {
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            
+            if (this.files && this.files[0]) {
+                const file = this.files[0];
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                fileName.textContent = `${file.name} (${sizeMB} MB)`;
+                fileInfo.style.display = 'block';
+            } else {
+                fileInfo.style.display = 'none';
+            }
+        });
+
+        function renderResponse(data) {
+            let plan = {};
+            try {
+                plan = typeof data.resposta === 'string' ? JSON.parse(data.resposta) : data.resposta;
+            } catch (e) {
+                return `<div class="alert alert-error"><strong>Erro ao processar resposta:</strong> ${e.message}</div>`;
+            }
+
+            let html = '';
+
+            // Resumo
+            if (plan.resumo) {
+                html += `<div class="card">
+                    <h2><span class="card-icon">📋</span> Resumo do Plano</h2>
+                    <p class="resumo-text">${plan.resumo}</p>
+                </div>`;
+            }
+
+            // Informações Identificadas
+            if (plan.informacoesIdentificadas) {
+                const info = plan.informacoesIdentificadas;
+                html += `<div class="card">
+                    <h2><span class="card-icon">👤</span> Informações Identificadas</h2>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">Idade</div>
+                            <div class="info-value">${info.idade || '<span class="info-empty">Não informado</span>'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Sexo</div>
+                            <div class="info-value">${info.sexo || '<span class="info-empty">Não informado</span>'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Peso</div>
+                            <div class="info-value">${info.peso || '<span class="info-empty">Não informado</span>'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Altura</div>
+                            <div class="info-value">${info.altura || '<span class="info-empty">Não informado</span>'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Prazo para Prova</div>
+                            <div class="info-value">${info.prazoProva || '<span class="info-empty">Não informado</span>'}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Dias Disponíveis</div>
+                            <div class="info-value">${info.diasDisponiveis || '<span class="info-empty">Não informado</span>'}</div>
+                        </div>
+                    </div>
+                    ${info.modalidades && info.modalidades.length > 0 ? `
+                        <div style="margin-top: 20px;">
+                            <strong style="color: #1a5f3d;">Modalidades Identificadas:</strong>
+                            <div class="modalidades-list">
+                                ${info.modalidades.map(m => `<span class="badge">${m}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>`;
+            }
+
+            // Informações Faltantes
+            if (plan.informacoesFaltantes && plan.informacoesFaltantes.length > 0) {
+                html += `<div class="card" style="border-left-color: #ff9800;">
+                    <h2><span class="card-icon">⚠️</span> Informações Faltantes</h2>
+                    <div class="modalidades-list">
+                        ${plan.informacoesFaltantes.map(info => `<span class="badge badge-missing">${info}</span>`).join('')}
+                    </div>
+                    <p style="margin-top: 15px; color: #666; font-size: 0.95em;">Forneça essas informações para um plano ainda mais personalizado.</p>
+                </div>`;
+            }
+
+            // Avaliação
+            if (plan.avaliacao) {
+                html += `<div class="card">
+                    <h2><span class="card-icon">📊</span> Avaliação</h2>
+                    <p style="color: #555; line-height: 1.8;">${plan.avaliacao}</p>
+                </div>`;
+            }
+
+            // Cronograma
+            if (plan.cronograma && plan.cronograma.length > 0) {
+                html += `<div class="card">
+                    <h2><span class="card-icon">📅</span> Cronograma de Treino</h2>
+                    <div class="schedule-container">
+                        ${plan.cronograma.map(dia => `
+                            <div class="schedule-day">
+                                <div class="schedule-day-title">📍 ${dia.dia}</div>
+                                <div class="schedule-objetivo"><strong>Objetivo:</strong> ${dia.objetivo}</div>
+                                <ul class="activities">
+                                    ${dia.atividades.map(atividade => `<li>${atividade}</li>`).join('')}
+                                </ul>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            // Recomendações
+            if (plan.recomendacoes && plan.recomendacoes.length > 0) {
+                html += `<div class="card">
+                    <h2><span class="card-icon">💡</span> Recomendações</h2>
+                    <ul class="recommendations-list">
+                        ${plan.recomendacoes.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>`;
+            }
+
+            // Alimentação
+            if (plan.alimentacao && plan.alimentacao.length > 0) {
+                html += `<div class="card">
+                    <h2><span class="card-icon">🥗</span> Alimentação Recomendada</h2>
+                    <div class="food-grid">
+                        ${plan.alimentacao.map(food => `
+                            <div class="food-item">
+                                <div class="food-title">${food.titulo || food}</div>
+                                ${food.descricao ? `<div class="food-desc">${food.descricao}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            // Cuidados
+            if (plan.cuidados && plan.cuidados.length > 0) {
+                html += `<div class="card">
+                    <h2><span class="card-icon">🛡️</span> Cuidados Importantes</h2>
+                    <div>
+                        ${plan.cuidados.map(cuidado => `
+                            <div class="care-item">
+                                <strong>${cuidado.titulo || 'Cuidado'}</strong>
+                                ${cuidado.descricao ? cuidado.descricao : cuidado}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+
+            return html || '<div class="empty-state"><div class="empty-state-icon">📊</div><p>Nenhum plano gerado</p></div>';
+        }
+
+        async function processarPDF() {
+            const fileInput = document.getElementById('pdfFile');
+            const button = document.getElementById('btnProcessar');
+            const responseContainer = document.getElementById('response-container');
+            const alertsContainer = document.getElementById('alerts');
+
+            alertsContainer.innerHTML = '';
+
+            if (!fileInput.files || !fileInput.files[0]) {
+                alertsContainer.innerHTML = '<div class="alert alert-error">Por favor, selecione um arquivo PDF.</div>';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            
+            if (file.size > 10 * 1024 * 1024) {
+                alertsContainer.innerHTML = '<div class="alert alert-error">O arquivo é muito grande. Máximo: 10MB.</div>';
+                return;
+            }
+
+            button.disabled = true;
+            button.classList.add("loading");
+            button.innerHTML = '<span class="loading-spinner"></span> Processando edital...';
+            responseContainer.innerHTML = '';
+
+            try {
+                const formData = new FormData();
+                formData.append('pdf', file);
+
+                const extractResponse = await fetch('/api/extract-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const extractData = await extractResponse.json();
+
+                if (!extractResponse.ok) {
+                    alertsContainer.innerHTML = `<div class="alert alert-error"><strong>Erro ao processar PDF:</strong> ${extractData.erro || 'Erro desconhecido'}</div>`;
+                    button.disabled = false;
+                    button.classList.remove("loading");
+                    button.innerHTML = '<span id="btn-text">📤 Processar Edital</span>';
+                    return;
+                }
+
+                console.log('PDF processado:', extractData);
+                alertsContainer.innerHTML = `<div class="alert alert-success">✓ PDF processado com sucesso! (${extractData.totalPaginas} páginas)</div>`;
+
+                button.innerHTML = '<span class="loading-spinner"></span> Gerando plano...';
+
+                const llmResponse = await fetch("/api/llm", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ 
+                        prompt: `Aqui está o conteúdo do edital do TAF:\n\n${extractData.textoExtraido}\n\nGere um plano de preparação detalhado com base neste edital.` 
+                    }),
+                });
+
+                const llmData = await llmResponse.json();
+
+                if (!llmResponse.ok) {
+                    alertsContainer.innerHTML += `<div class="alert alert-error"><strong>Erro ao gerar plano:</strong> ${llmData.erro || "Erro desconhecido"}</div>`;
+                    button.disabled = false;
+                    button.classList.remove("loading");
+                    button.innerHTML = '<span id="btn-text">📤 Processar Edital</span>';
+                    return;
+                }
+
+                responseContainer.innerHTML = renderResponse(llmData);
+
+            } catch (error) {
+                alertsContainer.innerHTML = `<div class="alert alert-error"><strong>Erro:</strong> ${error.message}</div>`;
+                console.error('Erro:', error);
+            } finally {
+                button.disabled = false;
+                button.classList.remove("loading");
+                button.innerHTML = '<span id="btn-text">📤 Processar Edital</span>';
+            }
+        }
     </script>
-  </body>
+</body>
 </html>
