@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Planejador TAF - Preparação Física</title>
+    <title>Planejador TAF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.2/jspdf.plugin.autotable.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -113,6 +115,22 @@
         .btn-send.loading {
             opacity: 0.7;
             cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #555 0%, #777 100%);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+
+        .result-actions {
+            display: none;
+            gap: 10px;
+            margin-bottom: 20px;
         }
 
         .response-section {
@@ -230,12 +248,71 @@
             font-style: italic;
         }
 
-        /* Modalidades */
-        .modalidades-list {
+        /* Modalidades e critérios de pontuação */
+        .modalidade-block {
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 18px;
+            margin-top: 15px;
+        }
+
+        .modalidade-header {
             display: flex;
-            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
             gap: 10px;
-            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .modalidade-nome {
+            font-weight: 700;
+            color: #1a5f3d;
+            font-size: 1.15em;
+        }
+
+        .modalidade-desc {
+            color: #555;
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+
+        .criterio-block {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-top: 12px;
+        }
+
+        .criterio-label {
+            font-weight: 600;
+            color: #1a5f3d;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+        }
+
+        .pontuacao-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        .pontuacao-table th,
+        .pontuacao-table td {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .pontuacao-table th {
+            background: #1a5f3d;
+            color: white;
+        }
+
+        .data-prova {
+            color: #555;
+            margin-bottom: 10px;
         }
 
         .badge {
@@ -302,32 +379,16 @@
             font-weight: bold;
         }
 
-        /* Recomendações */
-        .recommendations-list {
-            list-style: none;
-            margin-top: 15px;
+        /* Linha dividida ao meio (Alimentação + Cuidados) */
+        .split-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
         }
 
-        .recommendations-list li {
-            padding: 12px 0;
-            padding-left: 30px;
-            position: relative;
-            border-bottom: 1px solid #eee;
-            color: #555;
-            line-height: 1.6;
-        }
-
-        .recommendations-list li:last-child {
-            border-bottom: none;
-        }
-
-        .recommendations-list li:before {
-            content: "→";
-            position: absolute;
-            left: 5px;
-            color: #1a5f3d;
-            font-weight: bold;
-            font-size: 1.2em;
+        .split-row .card {
+            margin-bottom: 0;
         }
 
         /* Alimentação */
@@ -399,6 +460,10 @@
             .food-grid {
                 grid-template-columns: 1fr;
             }
+
+            .split-row {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -443,10 +508,13 @@
 
         <div id="alerts"></div>
         <div id="response-container" class="response-section"></div>
+        <div class="result-actions" id="resultActions">
+            <button class="btn-secondary" style="flex: 1;" onclick="exportarPDF()">📄 Exportar PDF</button>
+            <button class="btn-secondary" style="flex: 1;" onclick="location.reload()">🔄 Anexar outro edital</button>
+        </div>
     </div>
 
     <script>
-        // Mostrar info do arquivo quando selecionado
         document.getElementById('pdfFile').addEventListener('change', function(e) {
             const fileInfo = document.getElementById('fileInfo');
             const fileName = document.getElementById('fileName');
@@ -461,86 +529,59 @@
             }
         });
 
+        let planAtual = null;
+
         function renderResponse(data) {
             let plan = {};
             try {
                 plan = typeof data.resposta === 'string' ? JSON.parse(data.resposta) : data.resposta;
+                planAtual = plan;
             } catch (e) {
                 return `<div class="alert alert-error"><strong>Erro ao processar resposta:</strong> ${e.message}</div>`;
             }
 
             let html = '';
 
-            // Resumo
-            if (plan.resumo) {
+            if (plan.resumo || plan.dataProva) {
                 html += `<div class="card">
                     <h2><span class="card-icon">📋</span> Resumo do Plano</h2>
-                    <p class="resumo-text">${plan.resumo}</p>
+                    ${plan.dataProva ? `<p class="data-prova"><strong>Data da prova:</strong> ${plan.dataProva}</p>` : ''}
+                    ${plan.resumo ? `<p class="resumo-text">${plan.resumo}</p>` : ''}
                 </div>`;
             }
 
-            // Informações Identificadas
-            if (plan.informacoesIdentificadas) {
-                const info = plan.informacoesIdentificadas;
+            if (plan.modalidades && plan.modalidades.length > 0) {
                 html += `<div class="card">
-                    <h2><span class="card-icon">👤</span> Informações Identificadas</h2>
-                    <div class="info-grid">
-                        <div class="info-item">
-                            <div class="info-label">Idade</div>
-                            <div class="info-value">${info.idade || '<span class="info-empty">Não informado</span>'}</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-label">Sexo</div>
-                            <div class="info-value">${info.sexo || '<span class="info-empty">Não informado</span>'}</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-label">Peso</div>
-                            <div class="info-value">${info.peso || '<span class="info-empty">Não informado</span>'}</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-label">Altura</div>
-                            <div class="info-value">${info.altura || '<span class="info-empty">Não informado</span>'}</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-label">Prazo para Prova</div>
-                            <div class="info-value">${info.prazoProva || '<span class="info-empty">Não informado</span>'}</div>
-                        </div>
-                        <div class="info-item">
-                            <div class="info-label">Dias Disponíveis</div>
-                            <div class="info-value">${info.diasDisponiveis || '<span class="info-empty">Não informado</span>'}</div>
-                        </div>
-                    </div>
-                    ${info.modalidades && info.modalidades.length > 0 ? `
-                        <div style="margin-top: 20px;">
-                            <strong style="color: #1a5f3d;">Modalidades Identificadas:</strong>
-                            <div class="modalidades-list">
-                                ${info.modalidades.map(m => `<span class="badge">${m}</span>`).join('')}
+                    <h2><span class="card-icon">🏋️</span> Modalidades e Critérios de Pontuação</h2>
+                    ${plan.modalidades.map(mod => `
+                        <div class="modalidade-block">
+                            <div class="modalidade-header">
+                                <span class="modalidade-nome">${mod.nome || 'Modalidade'}</span>
+                                ${mod.eliminatoria ? '<span class="badge badge-missing">Eliminatória</span>' : ''}
                             </div>
+                            ${mod.descricao ? `<p class="modalidade-desc">${mod.descricao}</p>` : ''}
+                            ${mod.criterios && mod.criterios.length > 0 ? mod.criterios.map(crit => `
+                                <div class="criterio-block">
+                                    <div class="criterio-label">${[crit.sexo, crit.faixaEtaria].filter(Boolean).join(' • ') || 'Critério geral'}</div>
+                                    ${crit.tabela && crit.tabela.length > 0 ? `
+                                        <table class="pontuacao-table">
+                                            <thead><tr><th>Desempenho</th><th>Pontuação</th></tr></thead>
+                                            <tbody>
+                                                ${crit.tabela.map(row => `<tr><td>${row.desempenho}</td><td>${row.pontuacao}</td></tr>`).join('')}
+                                            </tbody>
+                                        </table>
+                                    ` : '<p class="info-empty">Tabela de pontuação não identificada no edital.</p>'}
+                                </div>
+                            `).join('') : '<p class="info-empty" style="margin-top: 10px;">Critérios não identificados no edital.</p>'}
                         </div>
-                    ` : ''}
+                    `).join('')}
                 </div>`;
             }
 
-            // Informações Faltantes
             if (plan.informacoesFaltantes && plan.informacoesFaltantes.length > 0) {
-                html += `<div class="card" style="border-left-color: #ff9800;">
-                    <h2><span class="card-icon">⚠️</span> Informações Faltantes</h2>
-                    <div class="modalidades-list">
-                        ${plan.informacoesFaltantes.map(info => `<span class="badge badge-missing">${info}</span>`).join('')}
-                    </div>
-                    <p style="margin-top: 15px; color: #666; font-size: 0.95em;">Forneça essas informações para um plano ainda mais personalizado.</p>
-                </div>`;
+                console.log('Informações faltantes no edital:', plan.informacoesFaltantes);
             }
 
-            // Avaliação
-            if (plan.avaliacao) {
-                html += `<div class="card">
-                    <h2><span class="card-icon">📊</span> Avaliação</h2>
-                    <p style="color: #555; line-height: 1.8;">${plan.avaliacao}</p>
-                </div>`;
-            }
-
-            // Cronograma
             if (plan.cronograma && plan.cronograma.length > 0) {
                 html += `<div class="card">
                     <h2><span class="card-icon">📅</span> Cronograma de Treino</h2>
@@ -558,47 +599,176 @@
                 </div>`;
             }
 
-            // Recomendações
-            if (plan.recomendacoes && plan.recomendacoes.length > 0) {
-                html += `<div class="card">
-                    <h2><span class="card-icon">💡</span> Recomendações</h2>
-                    <ul class="recommendations-list">
-                        ${plan.recomendacoes.map(rec => `<li>${rec}</li>`).join('')}
-                    </ul>
-                </div>`;
-            }
+            if ((plan.alimentacao && plan.alimentacao.length > 0) || (plan.cuidados && plan.cuidados.length > 0)) {
+                html += `<div class="split-row">`;
 
-            // Alimentação
-            if (plan.alimentacao && plan.alimentacao.length > 0) {
-                html += `<div class="card">
-                    <h2><span class="card-icon">🥗</span> Alimentação Recomendada</h2>
-                    <div class="food-grid">
-                        ${plan.alimentacao.map(food => `
-                            <div class="food-item">
-                                <div class="food-title">${food.titulo || food}</div>
-                                ${food.descricao ? `<div class="food-desc">${food.descricao}</div>` : ''}
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>`;
-            }
+                if (plan.alimentacao && plan.alimentacao.length > 0) {
+                    html += `<div class="card">
+                        <h2><span class="card-icon">🥗</span> Alimentação Recomendada</h2>
+                        <div class="food-grid">
+                            ${plan.alimentacao.map(food => `
+                                <div class="food-item">
+                                    <div class="food-title">${food.titulo || food}</div>
+                                    ${food.descricao ? `<div class="food-desc">${food.descricao}</div>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+                }
 
-            // Cuidados
-            if (plan.cuidados && plan.cuidados.length > 0) {
-                html += `<div class="card">
-                    <h2><span class="card-icon">🛡️</span> Cuidados Importantes</h2>
-                    <div>
-                        ${plan.cuidados.map(cuidado => `
-                            <div class="care-item">
-                                <strong>${cuidado.titulo || 'Cuidado'}</strong>
-                                ${cuidado.descricao ? cuidado.descricao : cuidado}
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>`;
+                if (plan.cuidados && plan.cuidados.length > 0) {
+                    html += `<div class="card">
+                        <h2><span class="card-icon">🛡️</span> Cuidados Importantes</h2>
+                        <div>
+                            ${plan.cuidados.map(cuidado => `
+                                <div class="care-item">
+                                    <strong>${cuidado.titulo || 'Cuidado'}</strong>
+                                    ${cuidado.descricao ? cuidado.descricao : cuidado}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+                }
+
+                html += `</div>`;
             }
 
             return html || '<div class="empty-state"><div class="empty-state-icon">📊</div><p>Nenhum plano gerado</p></div>';
+        }
+
+        function exportarPDF() {
+            if (!planAtual) return;
+            const plan = planAtual;
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+            const margin = 40;
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const maxWidth = pageWidth - margin * 2;
+            const corPrimaria = [26, 95, 61];
+            let y = margin;
+
+            function quebrarPagina(alturaNecessaria) {
+                if (y + alturaNecessaria > pageHeight - margin) {
+                    doc.addPage();
+                    y = margin;
+                }
+            }
+
+            function sanitizarTexto(texto) {
+                return String(texto)
+                    .replace(/[‐-―−]/g, "-")
+                    .replace(/[‘’]/g, "'")
+                    .replace(/[“”]/g, String.fromCharCode(34))
+                    .replace(/…/g, "...")
+                    .replace(/[   ]/g, " ");
+            }
+
+            function titulo(texto, tamanho) {
+                quebrarPagina(tamanho * 1.6);
+                doc.setFont(undefined, 'bold');
+                doc.setFontSize(tamanho);
+                doc.setTextColor(...corPrimaria);
+                doc.text(sanitizarTexto(texto), margin, y);
+                y += tamanho * 1.3;
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(40, 40, 40);
+            }
+
+            function paragrafo(texto, tamanho) {
+                tamanho = tamanho || 11;
+                doc.setFontSize(tamanho);
+                doc.setFont(undefined, 'normal');
+                doc.setTextColor(60, 60, 60);
+                const linhas = doc.splitTextToSize(sanitizarTexto(texto), maxWidth);
+                linhas.forEach(linha => {
+                    quebrarPagina(tamanho * 1.5);
+                    doc.text(linha, margin, y);
+                    y += tamanho * 1.5;
+                });
+            }
+
+            function tabela(colunas, linhas) {
+                quebrarPagina(40);
+                doc.autoTable({
+                    startY: y,
+                    margin: { left: margin, right: margin },
+                    head: [colunas.map(sanitizarTexto)],
+                    body: linhas.map(linha => linha.map(sanitizarTexto)),
+                    styles: { fontSize: 10, textColor: [60, 60, 60] },
+                    headStyles: { fillColor: corPrimaria, textColor: 255 },
+                });
+                y = doc.lastAutoTable.finalY + 16;
+            }
+
+            titulo('Planejador TAF', 18);
+            y += 4;
+
+            if (plan.dataProva) {
+                paragrafo(`Data da prova: ${plan.dataProva}`, 11);
+                y += 4;
+            }
+
+            if (plan.resumo) {
+                titulo('Resumo do Plano', 14);
+                paragrafo(plan.resumo);
+                y += 8;
+            }
+
+            if (plan.modalidades && plan.modalidades.length > 0) {
+                titulo('Modalidades e Critérios de Pontuação', 14);
+                plan.modalidades.forEach(mod => {
+                    quebrarPagina(20);
+                    titulo(`${mod.nome || 'Modalidade'}${mod.eliminatoria ? ' (Eliminatória)' : ''}`, 12);
+                    if (mod.descricao) paragrafo(mod.descricao);
+                    if (mod.criterios && mod.criterios.length > 0) {
+                        mod.criterios.forEach(crit => {
+                            const rotulo = [crit.sexo, crit.faixaEtaria].filter(Boolean).join(' • ') || 'Critério geral';
+                            paragrafo(rotulo, 11);
+                            if (crit.tabela && crit.tabela.length > 0) {
+                                tabela(['Desempenho', 'Pontuação'], crit.tabela.map(row => [row.desempenho ?? '', row.pontuacao ?? '']));
+                            } else {
+                                paragrafo('Tabela de pontuação não identificada no edital.');
+                                y += 4;
+                            }
+                        });
+                    } else {
+                        paragrafo('Critérios não identificados no edital.');
+                    }
+                    y += 6;
+                });
+            }
+
+            if (plan.cronograma && plan.cronograma.length > 0) {
+                titulo('Cronograma de Treino', 14);
+                plan.cronograma.forEach(dia => {
+                    quebrarPagina(20);
+                    titulo(dia.dia || 'Dia', 12);
+                    if (dia.objetivo) paragrafo(`Objetivo: ${dia.objetivo}`);
+                    (dia.atividades || []).forEach(atividade => paragrafo(`• ${atividade}`));
+                    y += 6;
+                });
+            }
+
+            if (plan.alimentacao && plan.alimentacao.length > 0) {
+                titulo('Alimentação Recomendada', 14);
+                plan.alimentacao.forEach(food => {
+                    const item = typeof food === 'string' ? { titulo: food } : food;
+                    paragrafo(`• ${item.titulo || ''}${item.descricao ? ' — ' + item.descricao : ''}`);
+                });
+                y += 8;
+            }
+
+            if (plan.cuidados && plan.cuidados.length > 0) {
+                titulo('Cuidados Importantes', 14);
+                plan.cuidados.forEach(cuidado => {
+                    const item = typeof cuidado === 'string' ? { titulo: cuidado } : cuidado;
+                    paragrafo(`• ${item.titulo || 'Cuidado'}${item.descricao ? ' — ' + item.descricao : ''}`);
+                });
+            }
+
+            doc.save('plano-taf.pdf');
         }
 
         async function processarPDF() {
@@ -606,8 +776,10 @@
             const button = document.getElementById('btnProcessar');
             const responseContainer = document.getElementById('response-container');
             const alertsContainer = document.getElementById('alerts');
+            const resultActions = document.getElementById('resultActions');
 
             alertsContainer.innerHTML = '';
+            resultActions.style.display = 'none';
 
             if (!fileInput.files || !fileInput.files[0]) {
                 alertsContainer.innerHTML = '<div class="alert alert-error">Por favor, selecione um arquivo PDF.</div>';
@@ -669,6 +841,7 @@
                 }
 
                 responseContainer.innerHTML = renderResponse(llmData);
+                resultActions.style.display = 'flex';
 
             } catch (error) {
                 alertsContainer.innerHTML = `<div class="alert alert-error"><strong>Erro:</strong> ${error.message}</div>`;

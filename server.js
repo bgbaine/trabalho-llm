@@ -8,6 +8,7 @@ const app = express();
 const PORT = 3000;
 const API_KEY = process.env.OPENROUTER_API_KEY;
 const MODEL = "openai/gpt-oss-120b:free";
+const TAF_CHAR_LIMIT = 20000;
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -67,45 +68,157 @@ app.post("/api/extract-pdf", upload.single("pdf"), async (req, res) => {
 });
 
 function extrairDadosTAF(textoPdf) {
-  const textoNormalizado = textoPdf.toLowerCase();
-  const keywordsTaf = [
-    'taf', 'teste de aptidão física', 'aptidão física',
-    'corrida', 'flexão', 'abdominal', 'barra',
-    'cooper', 'abdômen', 'impulsão', 'resistência',
-    'exercício', 'série', 'repetição', 'tempo',
-    'pontuação', 'ponto', 'prova', 'candidato',
-    'sexo', 'idade', 'categoria', 'modalidade',
-    'metros', 'minuto', 'segundo', 'respetivo',
-    'capacitação física', 'exame de capacitação física',
-    'avaliação física', 'desempenho'
+
+  const keywordsForte = [
+    'teste de aptidão física', 'aptidão física', 'capacitação física',
+    'exame de capacitação física', 'avaliação física', 'taf',
+    'corrida', 'cooper', 'flex', 'abdomin', 'barra', 'natação', 'nataç',
+    'salto', 'impulsão', 'shuttle run', 'vai e vem', 'prancha',
+    'apoio de frente', 'agachamento', 'polichinelo', 'burpee',
+    'resistência', 'agilidade', 'flexibilidade', 'velocidade',
+    'sentar e alcançar', 'wells', 'distância'
   ];
 
-  const linhas = textoPdf.split('\n');
-  const linhasRelevantes = [];
+  
+  const keywordsFraca = [
+    'pontuação', 'pontos', 'apto', 'inapto', 'aprovado', 'reprovado', 'eliminat',
+    'faixa etária', 'masculino', 'feminino', 'índice mínimo', 'índices mínimos',
+    'mínimo exigido', 'tabela de', 'critério', 'modalidade'
+  ];
 
-  linhas.forEach(line => {
-    const lineLower = line.toLowerCase();
-    if (keywordsTaf.some(keyword => lineLower.includes(keyword))) {
-      const cleanLine = line.trim();
-      if (cleanLine.length > 0) {
-        linhasRelevantes.push(cleanLine);
-      }
-    }
+  
+  const DIACRITICOS = new RegExp('[\\u0300-\\u036f]', 'g');
+  const semAcento = (str) => str.normalize('NFD').replace(DIACRITICOS, '');
+  const keywordsForteNormalizadas = keywordsForte.map(semAcento);
+  const keywordsFracaNormalizadas = keywordsFraca.map(semAcento);
+
+  const linhas = textoPdf.split('\n');
+  const n = linhas.length;
+  const temKeywordForte = new Array(n);
+  const podeContinuar = new Array(n);
+
+  linhas.forEach((line, idx) => {
+    const lineLower = semAcento(line.toLowerCase());
+    temKeywordForte[idx] = keywordsForteNormalizadas.some(keyword => lineLower.includes(keyword));
+    const temKeywordFraca = keywordsFracaNormalizadas.some(keyword => lineLower.includes(keyword));
+    const numerosEncontrados = line.match(/\d+(?:[.,]\d+)?/g) || [];
+    const temTabelaNumerica = numerosEncontrados.length >= 2;
+    podeContinuar[idx] = temKeywordFraca || temTabelaNumerica;
   });
 
-  if (linhasRelevantes.length < 20) {
-    return textoPdf.substring(0, 3000); // Limitar a 3000 caracteres do início
+  const relevante = new Array(n).fill(false);
+
+  // Percorrer as linhas do pdf de cima para baixo 
+  let emCadeia = false;
+  for (let i = 0; i < n; i++) {
+    if (temKeywordForte[i]) {
+      relevante[i] = true;
+      emCadeia = true;
+    } else if (emCadeia && (linhas[i].trim().length === 0 || podeContinuar[i])) {
+      relevante[i] = true;
+    } else {
+      emCadeia = false;
+    }
   }
 
-  let textoProcessado = linhasRelevantes.join('\n');
-  if (textoProcessado.length > 3000) {
-    textoProcessado = textoProcessado.substring(0, 3000);
+  // Percorrer as linhas do pdf de baixo para cima
+  emCadeia = false;
+  for (let i = n - 1; i >= 0; i--) {
+    if (temKeywordForte[i]) {
+      relevante[i] = true;
+      emCadeia = true;
+    } else if (emCadeia && (linhas[i].trim().length === 0 || podeContinuar[i])) {
+      relevante[i] = true;
+    } else {
+      emCadeia = false;
+    }
+  }
+
+  let textoProcessado = '';
+  let ultimoIndice = null;
+  for (let idx = 0; idx < n; idx++) {
+    if (!relevante[idx]) continue;
+    const linha = linhas[idx].trim();
+    if (linha.length === 0) continue;
+    if (ultimoIndice !== null && idx > ultimoIndice + 1) {
+      textoProcessado += '\n[...]\n';
+    }
+    textoProcessado += linha + '\n';
+    ultimoIndice = idx;
+  }
+  textoProcessado = textoProcessado.trim();
+
+  if (textoProcessado.length < 500) {
+    return textoPdf.substring(0, TAF_CHAR_LIMIT);
+  }
+
+  if (textoProcessado.length > TAF_CHAR_LIMIT) {
+    textoProcessado = textoProcessado.substring(0, TAF_CHAR_LIMIT);
   }
 
   return textoProcessado;
 }
 
-// Endpoint existente para gerar plano com a LLM
+const SYSTEM_PROMPT = `
+Você é um especialista em editais de concursos públicos e em TAF (Teste de Aptidão Física), com profundo conhecimento das modalidades mais comuns (corrida/Cooper, flexão de braço, abdominal, barra fixa, natação, salto em distância, shuttle run, entre outras) e de como esses editais estruturam tabelas de pontuação por sexo e faixa etária.
+
+Você recebe APENAS um trecho de texto extraído automaticamente de um PDF de edital (sem nenhuma informação pessoal do candidato, como idade, sexo, peso, altura ou disponibilidade de treino). O texto pode vir com formatação imperfeita (colunas desalinhadas, linhas de tabela fragmentadas) porque é extraído de forma automática — use seu conhecimento de como tabelas de TAF costumam ser organizadas para reconstruir essas informações da forma mais fiel possível ao que está no edital.
+
+Sua tarefa:
+1. Identificar todas as modalidades/provas físicas exigidas no edital.
+2. Para cada modalidade, reconstruir a tabela de critérios de desempenho × pontuação (ou apto/inapto), separando por sexo e faixa etária quando o edital fizer essa distinção.
+3. Identificar se cada modalidade é eliminatória (reprova o candidato) ou apenas pontua.
+4. Identificar a data da prova, se estiver explícita no edital.
+5. Como não há dados pessoais do candidato, montar um cronograma de treino GERAL e progressivo (por fases/dias), baseado nas modalidades identificadas — sem assumir idade, sexo, peso ou nível de condicionamento físico do candidato.
+
+Regras importantes:
+- Nunca invente valores numéricos de tabelas de pontuação. Se um valor não estiver claro no texto, omita-o e relate em "informacoesFaltantes".
+- Não assuma dados pessoais do candidato: eles não existem nesse fluxo.
+- Se o edital não detalhar uma modalidade ou tabela, liste a lacuna em "informacoesFaltantes".
+- Retorne EXCLUSIVAMENTE um JSON válido, sem markdown e sem texto fora do JSON.
+
+Formato:
+
+{
+  "resumo": "",
+  "dataProva": null,
+  "modalidades": [
+    {
+      "nome": "",
+      "descricao": "",
+      "eliminatoria": false,
+      "criterios": [
+        {
+          "sexo": null,
+          "faixaEtaria": "",
+          "tabela": [
+            { "desempenho": "", "pontuacao": "" }
+          ]
+        }
+      ]
+    }
+  ],
+  "informacoesFaltantes": [],
+  "cronograma": [
+    {
+      "dia": "",
+      "objetivo": "",
+      "atividades": []
+    }
+  ],
+  "alimentacao": [],
+  "cuidados": []
+}
+
+Regras de formatação:
+- Sempre retornar JSON válido.
+- Nunca retornar markdown.
+- Nunca retornar texto fora do JSON.
+- Não repetir informações.
+- Se o edital não informar "sexo" ou "faixaEtaria" para um critério, use null nesses campos em vez de inventar.
+- Se uma modalidade não tiver tabela de pontuação identificável no texto, retorne "criterios": [] e explique a lacuna em "informacoesFaltantes".
+`;
+
 app.post("/api/llm", async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -113,8 +226,8 @@ app.post("/api/llm", async (req, res) => {
       return res.status(400).json({ erro: "O campo prompt é obrigatório." });
     }
 
-    if (prompt.length > 5000) {
-      return res.status(400).json({ erro: "Limite: 5000 caracteres." });
+    if (prompt.length > 21000) {
+      return res.status(400).json({ erro: "Limite: 21000 caracteres." });
     }
 
     const response = await fetch(
@@ -132,58 +245,7 @@ app.post("/api/llm", async (req, res) => {
           messages: [
             {
               role: "system",
-              content: `
-Você é um treinador especializado em preparação para TAF (Teste de Aptidão Física) de concursos públicos.
-
-Analise o edital ou informações sobre o TAF fornecidas pelo usuário. Identifique as modalidades, critérios de desempenho, e requisitos específicos.
-
-Se informações pessoais do candidato forem mencionadas (idade, sexo, peso, altura, disponibilidade), utilize essas informações para personalizar o plano.
-
-Quando houver informações insuficientes:
-- Não invente valores.
-- Faça recomendações gerais e seguras.
-- Liste quais informações adicionais poderiam melhorar a personalização.
-
-Seu objetivo é criar um plano de preparação para o TAF focado na evolução gradual do candidato baseado no edital fornecido.
-
-Retorne EXCLUSIVAMENTE um JSON válido.
-
-Formato:
-
-{
-  "resumo": "",
-  "informacoesIdentificadas": {
-    "idade": null,
-    "sexo": null,
-    "peso": null,
-    "altura": null,
-    "prazoProva": null,
-    "diasDisponiveis": null,
-    "modalidades": []
-  },
-  "informacoesFaltantes": [],
-  "avaliacao": "",
-  "cronograma": [
-    {
-      "dia": "",
-      "objetivo": "",
-      "atividades": []
-    }
-  ],
-  "recomendacoes": [],
-  "alimentacao": [],
-  "cuidados": []
-}
-
-Regras:
-- Sempre retornar JSON válido.
-- Nunca retornar markdown.
-- Nunca retornar texto fora do JSON.
-- Não repetir informações.
-- Adaptar o plano aos dados disponíveis.
-- Se o edital informar modalidades específicas do TAF, priorize essas modalidades.
-- Caso o edital não seja claro, monte um plano físico geral para TAF.
-`,
+              content: SYSTEM_PROMPT,
             },
             {
               role: "user",
@@ -191,12 +253,13 @@ Regras:
             },
           ],
           temperature: 0.7,
-          max_completion_tokens: 700,
+          max_completion_tokens: 3000,
         }),
       },
     );
 
     if (!response.ok) {
+      console.log(response);
       const detalhe = await response.text();
       return res.status(502).json({
         erro: "Erro ao consultar o OpenRouter.",

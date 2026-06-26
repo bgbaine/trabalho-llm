@@ -57,7 +57,7 @@ OPENROUTER_API_KEY=sua_chave_aqui
 
 ```bash
 npm install
-npm run dev
+npm start
 ```
 
 Aplicação disponível em `http://localhost:3000`.
