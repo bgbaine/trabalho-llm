@@ -17,14 +17,13 @@ Fluxo principal:
 - Extração de texto com filtro para termos de TAF.
 - Geração de plano com saída em JSON estruturado.
 - Renderização visual do plano com seções:
-	- Resumo
-	- Informações identificadas
-	- Informações faltantes
-	- Avaliação
-	- Cronograma
-	- Recomendações
-	- Alimentação
-	- Cuidados
+	- Resumo (com data da prova, quando identificada)
+	- Modalidades e critérios de pontuação (tabelas por sexo/faixa etária)
+	- Cronograma de treino
+	- Alimentação recomendada e cuidados importantes
+- Informações faltantes do edital ficam disponíveis apenas no console do navegador (DevTools), não na interface.
+- Exportação do plano gerado para PDF.
+- Botão para reiniciar o fluxo e anexar outro edital.
 
 ## Arquitetura resumida
 
